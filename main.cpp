@@ -1,7 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <cmath>
-
+#include <fstream>
 using namespace std;
 using namespace cv;
 #define PI acos(-1)
@@ -53,7 +53,7 @@ int main(){
     waitKey(1);
     const int ImageWidth = GrayImage.cols;
     const int ImageHeight = GrayImage.rows;
-    cout << "Image Size: " << ImageWidth << ' ' << ImageHeight << '\n';
+    std::cout << "Image Size: " << ImageWidth << ' ' << ImageHeight << '\n';
 
     // Image matrix
     vector <vector <uchar>> image(ImageHeight, vector <uchar> (ImageWidth));
@@ -73,7 +73,7 @@ int main(){
 
     // setup string art
     const int Radius = min(ImageHeight, ImageWidth) / 2 - 10; //  - some small delta
-    cout << "R = " << Radius << '\n';
+    std::cout << "R = " << Radius << '\n';
 
     int NailsNumber = 200;
     vector <Pixel> Nails(NailsNumber);
@@ -82,7 +82,7 @@ int main(){
         int x = Radius * cos(Angle * i) + ImageWidth / 2;
         int y = Radius * sin(Angle * i) + ImageHeight / 2;
         Nails[i] = Pixel(x, y, 255);
-        //cout << cos(Angle * i) << ' ' << sin(Angle * i) << '\n';
+        //std::cout << cos(Angle * i) << ' ' << sin(Angle * i) << '\n';
     }
     vector<Pixel>circle;
     for (int i = 0; i < NailsNumber; i++) {
@@ -91,7 +91,7 @@ int main(){
     }
 
     // Scale matrix
-    vector <vector <double>> scaleMatrix(ImageHeight, vector <double>(ImageWidth, 1.0));
+    vector <vector <double>> scaleMatrix(ImageHeight, vector <double>(ImageWidth, 0.0));
     // some ideas and rules
     // 
     // Idea - normal distribution scale
@@ -99,21 +99,40 @@ int main(){
     // Idea - hand control scale
     // rule - normalize matrix  - sum(scale[i])/size = 1
 
+    //Step distribution 
+    const int StepRadius = Radius / 2;
+    int x = ImageHeight / 2;
+    int y = ImageWidth / 2;
+    double stepHeight = 0.5;
 
-    // test lines
-    //vector<Pixel>line;
-    //updateImage(stringArt, line);
-    //for (int j = 0; j < NailsNumber; j++) {
-    //    for (int i = 0; i < NailsNumber; i++) {
-    //        linePosition(Nails[j], Nails[i], line);
-    //        updateImage(stringArt, line);
-    //    }
-    //}
+    for (int i = x - StepRadius + 1; i < x + StepRadius; i++)
+        for (int j = y - StepRadius + 1; j < y + StepRadius; j++)
+            if ((x - i) * (x - i) + (y - j) * (y - j) <= StepRadius * StepRadius)
+                scaleMatrix[i][j] = stepHeight;
+    double sum = 0;
+    for (int i = 0; i < ImageHeight; i++)
+        for (int j = 0; j < ImageWidth; j++)
+            sum += scaleMatrix[i][j];
+    double baseScale = 1.0 - sum / (ImageHeight * ImageWidth);
+    cout << "base scale: " << baseScale << "\ncenter scale: " << baseScale + stepHeight << '\n';
+    for (int i = 0; i < ImageHeight; i++)
+        for (int j = 0; j < ImageWidth; j++)
+            scaleMatrix[i][j]+= baseScale;
+    //check distriburion
+    //print error of distribution
+    sum = 0;
+    for (int i = 0; i < ImageHeight; i++)
+        for (int j = 0; j < ImageWidth; j++)
+            sum += scaleMatrix[i][j];
+    double error = 1 - sum / (ImageHeight * ImageWidth);
+    std::cout << "Disrtibution error: " << error << '\n';
 
-    // greedy algorythm
+    // Main algorythm - greedy algorythm
     int startNailIndex = 0, endNailIndex = 0;
-    int IterationNumber = 1000;
-    vector<int> nailsOrder(IterationNumber);
+    int IterationNumber = 4000;
+    vector <bool> deadEnds(NailsNumber, false);
+    int deadEndNails = 0;
+    vector<int> nailsOrder(IterationNumber, -1);
     for (int iteration = 0; iteration < IterationNumber; iteration++) {
         vector<Pixel>line;
         vector<Pixel>optimalLine;
@@ -121,8 +140,8 @@ int main(){
         for (int i = 0; i < NailsNumber; i++) {
             if (dist(startNailIndex, i, NailsNumber) > 10) {
                 linePosition(Nails[startNailIndex], Nails[i], line);
-                double diff = difference(line, image, stringArt);
-                //cout << diff << '\n';
+                double diff = difference(line, image, stringArt, scaleMatrix);
+                //std::cout << diff << '\n';
                 if (diff > optimalDiff) {
                     optimalDiff = diff;
                     optimalLine = line;
@@ -134,18 +153,39 @@ int main(){
             startNailIndex = endNailIndex;
         }
         else {
+            if (!deadEnds[startNailIndex]) {
+                deadEndNails++;
+                deadEnds[startNailIndex] = true; 
+            }
             linePosition(Nails[startNailIndex], Nails[(startNailIndex + 1) % NailsNumber], optimalLine);
             startNailIndex = (startNailIndex + 1) % NailsNumber;
             endNailIndex = startNailIndex;
         }
         nailsOrder[iteration] = startNailIndex;
         updateImage(stringArt, optimalLine);
-
-        if (iteration % (IterationNumber / 100) == 0)cout << "progress: " << 100 * iteration / IterationNumber << " %" << '\n';
+        if (iteration % (IterationNumber / 100) == 0)std::cout << "progress: " << 100 * iteration / IterationNumber << " %" << '\n';
+        if (deadEndNails == NailsNumber) {
+            cout << "All nails are dead end\n";
+            break;
+        }
     }
-    cout << "output array:\n";
-    for (int i = 0; i < IterationNumber; i++)cout << nailsOrder[i] << ' ';
-    cout << '\n';
+
+    //prepare outpur array
+    int index = IterationNumber - 1;
+    while (nailsOrder[index] == -1)index--;
+    while (dist(nailsOrder[index], nailsOrder[index - 1], NailsNumber) < 2) {
+        nailsOrder[index] = -1;
+        index--;
+    }
+    std::ofstream file("result.txt"); 
+    std::cout << "output array:\n[ ";
+    for (int i = 0; i < IterationNumber; i++)if (nailsOrder[i] != -1) {
+        std::cout << nailsOrder[i] << ' ';
+        file << nailsOrder[i] << ' ';
+    }
+    file.close();
+    std::cout << ']' << '\n';
+
     // View result
     Mat FinalResult(ImageHeight,ImageWidth, CV_8UC1);
     viewMatrix(stringArt, FinalResult);
@@ -188,7 +228,7 @@ void linePosition(Pixel Pixel1, Pixel Pixel2, vector <Pixel>& line) {
             index++;
         }
     }
-    // for (int i = 0; i < line.size(); i++)cout << line[i].x << ' ' << line[i].y << '\n';
+    // for (int i = 0; i < line.size(); i++)std::cout << line[i].x << ' ' << line[i].y << '\n';
 }
 
 void updateImage(vector<vector<uchar>> &Image,const vector <Pixel> &changes) {
