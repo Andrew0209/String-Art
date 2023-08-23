@@ -25,7 +25,8 @@ vector<Pixel> createCircle(int x, int y, int R, uchar color = 255);
 double difference(const vector<Pixel>& line, const vector<vector<uchar>>& OriginalImage, const vector<vector<uchar>>& NewImage, 
     const vector<vector<double>>& Scale = {});
 int dist(int a, int b, int MaxNum) { return min(abs(a - b), MaxNum - abs(a - b)); }
-//test function
+void stepDistribution(vector<vector<double>>& scaleMatrix, double step = 0.5, int R = -1, bool Normalize = false);
+void normalize(vector<vector<double>>& scaleMatrix);
 void onMouse(int event, int x, int y, int flags, void* userdata);
 
 //int main() {
@@ -91,41 +92,23 @@ int main(){
     }
 
     // Scale matrix
-    vector <vector <double>> scaleMatrix(ImageHeight, vector <double>(ImageWidth, 0.0));
-    // some ideas and rules
-    // 
-    // Idea - normal distribution scale
-    // Idea - step distribution on center of image
-    // Idea - hand control scale
-    // rule - normalize matrix  - sum(scale[i])/size = 1
+    vector <vector <double>> scaleMatrix(ImageHeight, vector <double>(ImageWidth, 1.0));
 
-    //Step distribution 
-    const int StepRadius = Radius / 2;
-    int x = ImageHeight / 2;
-    int y = ImageWidth / 2;
-    double stepHeight = 0.5;
+    stepDistribution(scaleMatrix);
+    Mat DistributionImage;
+    cvtColor(GrayImage, DistributionImage, COLOR_GRAY2RGB);
+    namedWindow("Distribution");
+    setMouseCallback("Distribution", onMouse, &DistributionImage);
+    while (true) {
+    imshow("Distribution", DistributionImage);
+    if (waitKey(1) == 27) break;  // Exit on ESC key press
+    }
+    destroyWindow("Distribution");
+    for (int i = 0; i < ImageHeight; i++)
+        for (int j = 0; j < ImageWidth; j++)
+            if (DistributionImage.at<Vec3b>(i, j) == Vec3b(0, 0, 200))
+                scaleMatrix[i][j] += 2;
 
-    for (int i = x - StepRadius + 1; i < x + StepRadius; i++)
-        for (int j = y - StepRadius + 1; j < y + StepRadius; j++)
-            if ((x - i) * (x - i) + (y - j) * (y - j) <= StepRadius * StepRadius)
-                scaleMatrix[i][j] = stepHeight;
-    double sum = 0;
-    for (int i = 0; i < ImageHeight; i++)
-        for (int j = 0; j < ImageWidth; j++)
-            sum += scaleMatrix[i][j];
-    double baseScale = 1.0 - sum / (ImageHeight * ImageWidth);
-    cout << "base scale: " << baseScale << "\ncenter scale: " << baseScale + stepHeight << '\n';
-    for (int i = 0; i < ImageHeight; i++)
-        for (int j = 0; j < ImageWidth; j++)
-            scaleMatrix[i][j]+= baseScale;
-    //check distriburion
-    //print error of distribution
-    sum = 0;
-    for (int i = 0; i < ImageHeight; i++)
-        for (int j = 0; j < ImageWidth; j++)
-            sum += scaleMatrix[i][j];
-    double error = 1 - sum / (ImageHeight * ImageWidth);
-    std::cout << "Disrtibution error: " << error << '\n';
 
     // Main algorythm - greedy algorythm
     int startNailIndex = 0, endNailIndex = 0;
@@ -277,15 +260,49 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
 
     if (event == cv::EVENT_LBUTTONDOWN) {
         // Start drawing
-        cv::circle(*image, cv::Point(x, y), 5, cv::Scalar(0, 0, 200), -1);
+        circle(*image, cv::Point(x, y), 5, cv::Scalar(0, 0, 200), -1);
     }
     else if (event == cv::EVENT_MOUSEMOVE && (flags & cv::EVENT_FLAG_LBUTTON)) {
         // Continue drawing while left button is pressed and mouse is moving
-        cv::circle(*image, cv::Point(x, y), 5, cv::Scalar(0, 0, 200), -1);
+        circle(*image, cv::Point(x, y), 5, cv::Scalar(0, 0, 200), -1);
     }
     else if (event == cv::EVENT_LBUTTONUP) {
         // Stop drawing
     }
 
-    cv::imshow("Drawing", *image);
+    imshow("Distribution", *image);
+}
+
+void stepDistribution(vector<vector<double>>& scaleMatrix, double step, int R, bool Normalize) {
+    int ImageHeight = scaleMatrix.size();
+    int ImageWidth = scaleMatrix[0].size();
+    if(R == -1)R = min(ImageHeight, ImageWidth) / 4;
+    int x = ImageHeight / 2;
+    int y = ImageWidth / 2;
+    for (int i = x - R + 1; i < x + R; i++)
+        for (int j = y - R + 1; j < y + R; j++)
+            if ((x - i) * (x - i) + (y - j) * (y - j) <= R * R)
+                scaleMatrix[i][j] += step;
+    if(Normalize)normalize(scaleMatrix);
+}
+
+void normalize(vector<vector<double>>& scaleMatrix) {
+    int ImageHeight = scaleMatrix.size();
+    int ImageWidth = scaleMatrix[0].size();
+    double sum = 0;
+    for (int i = 0; i < ImageHeight; i++)
+        for (int j = 0; j < ImageWidth; j++)
+            sum += scaleMatrix[i][j];
+    double baseScale = 1.0 - sum / (ImageHeight * ImageWidth);
+    for (int i = 0; i < ImageHeight; i++)
+        for (int j = 0; j < ImageWidth; j++)
+            scaleMatrix[i][j] += baseScale;
+    //check distriburion
+    //print error of distribution
+    sum = 0;
+    for (int i = 0; i < ImageHeight; i++)
+        for (int j = 0; j < ImageWidth; j++)
+            sum += scaleMatrix[i][j];
+    double error = 1 - sum / (ImageHeight * ImageWidth);
+    std::cout << "Disrtibution error: " << error << '\n';
 }
