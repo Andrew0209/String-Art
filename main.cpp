@@ -165,6 +165,10 @@ int main(){
     for (int i = 0; i < IterationNumber; i++)if (nailsOrder[i] != -1) {
         std::cout << nailsOrder[i] << ' ';
         file << nailsOrder[i] << ' ';
+        if ((i + 1) % 10 == 0) {
+            std::cout << '\n';
+            file << '\n';
+        }
     }
     file.close();
     std::cout << ']' << '\n';
