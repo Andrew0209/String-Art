@@ -30,7 +30,7 @@ void normalize(vector<vector<double>>& scaleMatrix);
 void onMouse(int event, int x, int y, int flags, void* userdata);
 
 int main(){
-    const Mat OriginalImg = imread("C:/Users/37602/source/graphic/test-images/test8.jpg");
+    const Mat OriginalImg = imread("../test-images/test8.jpg");
     Mat resizedImage;
     resize(OriginalImg, resizedImage, Size(1000, 1000));
     Mat GrayImage;
