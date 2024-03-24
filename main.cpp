@@ -29,38 +29,25 @@ void stepDistribution(vector<vector<double>>& scaleMatrix, double step = 0.5, in
 void normalize(vector<vector<double>>& scaleMatrix);
 void onMouse(int event, int x, int y, int flags, void* userdata);
 
-//int main() {
-//    Mat image(800, 800, CV_8UC3, Scalar(255, 255, 255));
-//
-//    namedWindow("Drawing");
-//    setMouseCallback("Drawing", onMouse, &image);
-//
-//    while (true) {
-//        cv::imshow("Drawing", image);
-//        //waitKey(1);
-//        if (waitKey(1) == 27)  // Exit on ESC key press
-//            break;
-//    }
-//
-//    destroyAllWindows();
-//    return 0;
-//}
-
 int main(){
     const Mat OriginalImg = imread("C:/Users/37602/source/graphic/test-images/test8.jpg");
+    Mat resizedImage;
+    resize(OriginalImg, resizedImage, Size(1000, 1000));
     Mat GrayImage;
-    cvtColor(OriginalImg, GrayImage, COLOR_BGR2GRAY);
+    cvtColor(resizedImage, GrayImage, COLOR_BGR2GRAY);
     imshow("Gray image", GrayImage);
     waitKey(1);
     const int ImageWidth = GrayImage.cols;
     const int ImageHeight = GrayImage.rows;
-    std::cout << "Image Size: " << ImageWidth << ' ' << ImageHeight << '\n';
+    cout << "Image Size: " << ImageWidth << ' ' << ImageHeight << '\n';
 
     // Image matrix
     vector <vector <uchar>> image(ImageHeight, vector <uchar> (ImageWidth));
     for (int i = 0; i < ImageHeight; i++) {
         for (int j = 0; j < ImageWidth; j++) {
-            image[i][j] = max(int(GrayImage.at<uchar>(i, j) * 0.9 - 20), 0);
+            int pix = int(GrayImage.at<uchar>(i, j));
+            if (pix != 255)pix = max(int(pix * 0.9 - 20), 0);
+            image[i][j] = pix;
         }
     }
 
@@ -74,7 +61,7 @@ int main(){
 
     // setup string art
     const int Radius = min(ImageHeight, ImageWidth) / 2 - 10; //  - some small delta
-    std::cout << "R = " << Radius << '\n';
+    cout << "R = " << Radius << '\n';
 
     int NailsNumber = 200;
     vector <Pixel> Nails(NailsNumber);
@@ -83,7 +70,7 @@ int main(){
         int x = Radius * cos(Angle * i) + ImageWidth / 2;
         int y = Radius * sin(Angle * i) + ImageHeight / 2;
         Nails[i] = Pixel(x, y, 255);
-        //std::cout << cos(Angle * i) << ' ' << sin(Angle * i) << '\n';
+        //cout << cos(Angle * i) << ' ' << sin(Angle * i) << '\n';
     }
     vector<Pixel>circle;
     for (int i = 0; i < NailsNumber; i++) {
@@ -109,14 +96,16 @@ int main(){
             if (DistributionImage.at<Vec3b>(i, j) == Vec3b(0, 0, 200))
                 scaleMatrix[i][j] += 2;
 
-
+    double length = 0;
     // Main algorythm - greedy algorythm
     int startNailIndex = 0, endNailIndex = 0;
     int IterationNumber = 4000;
     vector <bool> deadEnds(NailsNumber, false);
     int deadEndNails = 0;
     vector<int> nailsOrder(IterationNumber, -1);
-    for (int iteration = 0; iteration < IterationNumber; iteration++) {
+    //for (int iteration = 0; iteration < IterationNumber; iteration++) {
+    int iteration = 0;
+    while(iteration < IterationNumber){
         vector<Pixel>line;
         vector<Pixel>optimalLine;
         double optimalDiff = 1;
@@ -124,7 +113,7 @@ int main(){
             if (dist(startNailIndex, i, NailsNumber) > 10) {
                 linePosition(Nails[startNailIndex], Nails[i], line);
                 double diff = difference(line, image, stringArt, scaleMatrix);
-                //std::cout << diff << '\n';
+                //cout << diff << '\n';
                 if (diff > optimalDiff) {
                     optimalDiff = diff;
                     optimalLine = line;
@@ -133,6 +122,10 @@ int main(){
             }
         }
         if (startNailIndex != endNailIndex) {
+            // update line length
+            double dx = (Nails[startNailIndex].x - Nails[endNailIndex].x);
+            double dy = (Nails[startNailIndex].y - Nails[endNailIndex].y);
+            length += sqrt(dx * dx + dy * dy) / Radius;
             startNailIndex = endNailIndex;
         }
         else {
@@ -142,37 +135,43 @@ int main(){
             }
             linePosition(Nails[startNailIndex], Nails[(startNailIndex + 1) % NailsNumber], optimalLine);
             startNailIndex = (startNailIndex + 1) % NailsNumber;
+            // update line length
+            double dx = (Nails[startNailIndex].x - Nails[endNailIndex].x);
+            double dy = (Nails[startNailIndex].y - Nails[endNailIndex].y);
+            length += sqrt(dx * dx + dy * dy) / Radius;
             endNailIndex = startNailIndex;
         }
-        nailsOrder[iteration] = startNailIndex;
+        if (iteration < nailsOrder.size())nailsOrder[iteration] = startNailIndex;
+        else nailsOrder.push_back(startNailIndex);
         updateImage(stringArt, optimalLine);
-        if (iteration % (IterationNumber / 100) == 0)std::cout << "progress: " << 100 * iteration / IterationNumber << " %" << '\n';
+        if (iteration % (IterationNumber / 100) == 0)cout << "progress: " << 100 * iteration / IterationNumber << " %" << '\n';
         if (deadEndNails == NailsNumber) {
             cout << "All nails are dead end\n";
             break;
         }
+        iteration++;
     }
-
+    
     //prepare outpur array
-    int index = IterationNumber - 1;
+    int index = nailsOrder.size() - 1;
     while (nailsOrder[index] == -1)index--;
     while (dist(nailsOrder[index], nailsOrder[index - 1], NailsNumber) < 2) {
         nailsOrder[index] = -1;
         index--;
     }
-    std::ofstream file("result.txt"); 
-    std::cout << "output array:\n[ ";
-    for (int i = 0; i < IterationNumber; i++)if (nailsOrder[i] != -1) {
-        std::cout << nailsOrder[i] << ' ';
+    ofstream file("result.txt"); 
+    cout << "output array:\n";
+    for (int i = 0; i < nailsOrder.size(); i++)
+        if (nailsOrder[i] != -1) {
+        cout << nailsOrder[i] << ' ';
         file << nailsOrder[i] << ' ';
         if ((i + 1) % 10 == 0) {
-            std::cout << '\n';
+            cout << '\n';
             file << '\n';
         }
     }
     file.close();
-    std::cout << ']' << '\n';
-
+    cout << "length: " << length << "\niteratoin: " << iteration << '\n';
     // View result
     Mat FinalResult(ImageHeight,ImageWidth, CV_8UC1);
     viewMatrix(stringArt, FinalResult);
@@ -197,7 +196,7 @@ void linePosition(Pixel Pixel1, Pixel Pixel2, vector <Pixel>& line) {
     line.resize(abs(Pixel1.x - Pixel2.x) + abs(Pixel1.y - Pixel2.y) + 2);
     int index = 0;
     // 255 - black, 0 - while (inverse color)
-    uchar color = 20;
+    uchar color = 60;
     // 1 - pixel line only coordinates
     if (Pixel1.x != Pixel2.x) {
         double k = double(Pixel1.y - Pixel2.y) / (Pixel1.x - Pixel2.x);
@@ -215,7 +214,7 @@ void linePosition(Pixel Pixel1, Pixel Pixel2, vector <Pixel>& line) {
             index++;
         }
     }
-    // for (int i = 0; i < line.size(); i++)std::cout << line[i].x << ' ' << line[i].y << '\n';
+    // for (int i = 0; i < line.size(); i++)cout << line[i].x << ' ' << line[i].y << '\n';
 }
 
 void updateImage(vector<vector<uchar>> &Image,const vector <Pixel> &changes) {
@@ -308,5 +307,5 @@ void normalize(vector<vector<double>>& scaleMatrix) {
         for (int j = 0; j < ImageWidth; j++)
             sum += scaleMatrix[i][j];
     double error = 1 - sum / (ImageHeight * ImageWidth);
-    std::cout << "Disrtibution error: " << error << '\n';
+    cout << "Disrtibution error: " << error << '\n';
 }
